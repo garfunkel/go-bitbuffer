@@ -3,46 +3,58 @@ package bitbuffer
 import (
 	"encoding/binary"
 	"bytes"
+	"io"
 )
 
+// BitBuffer represents a buffer, which is filled with bytes where each bit can be read as a single unit.
 type BitBuffer struct {
 	buffer []byte
-	pos    uint64
+	pos    uint8
 }
 
+// NewBitBuffer constructs a new BitBuffer.
 func NewBitBuffer() (bitBuffer *BitBuffer) {
 	return &BitBuffer{
 		pos: 0,
 	}
 }
 
+// Feed data bytes into the buffer.
 func (bitBuffer *BitBuffer) Feed(data []byte) {
 	bitBuffer.buffer = append(bitBuffer.buffer, data...)
 
 	return
 }
 
+// Read a number of bits from the buffer and return them as a byte array.
 func (bitBuffer *BitBuffer) Read(numBits uint64) (data []byte, err error) {
-	for numBits > 0 {
+	if uint64(len(bitBuffer.buffer) * 8 - int(bitBuffer.pos)) < numBits {
+		err = io.EOF
+	}
+
+	for numBits > 0 && len(bitBuffer.buffer) > 0 {
 		data = append(data, bitBuffer.buffer[0])
-		data[len(data)-1] <<= bitBuffer.pos
-		shifter := bitBuffer.buffer[1] >> (8 - bitBuffer.pos)
-		data[len(data)-1] ^= shifter
+		data[len(data) - 1] <<= bitBuffer.pos
+
+		if len(bitBuffer.buffer) > 1 {
+			shifter := bitBuffer.buffer[1] >> (8 - bitBuffer.pos)
+			data[len(data) - 1] ^= shifter
+		}
 
 		if numBits < 8 {
-			data[len(data)-1] >>= (8 - numBits)
-			data[len(data)-1] <<= (8 - numBits)
+			data[len(data) - 1] >>= (8 - numBits)
+			data[len(data) - 1] <<= (8 - numBits)
 
-			if bitBuffer.pos+numBits > 7 {
-				bitBuffer.buffer = bitBuffer.buffer[1:]
+			if uint64(bitBuffer.pos) + numBits > 7 {
+				bitBuffer.buffer = bitBuffer.buffer[1 :]
 			}
 
-			bitBuffer.pos = (bitBuffer.pos + numBits) % 8
+			bitBuffer.pos = uint8((uint64(bitBuffer.pos) + numBits) % 8)
 			numBits = 0
 
-			break
+			return
 		} else {
-			bitBuffer.buffer = bitBuffer.buffer[1:]
+			bitBuffer.buffer = bitBuffer.buffer[1 :]
 		}
 
 		numBits -= 8
@@ -51,6 +63,7 @@ func (bitBuffer *BitBuffer) Read(numBits uint64) (data []byte, err error) {
 	return
 }
 
+// Read an unsigned integer from the buffer of numBits size and return the integer value.
 func (bitBuffer *BitBuffer) ReadUint64(numBits uint8) (data uint64, err error) {
 	dataBytes, err := bitBuffer.Read(uint64(numBits))
 
@@ -76,6 +89,7 @@ func (bitBuffer *BitBuffer) ReadUint64(numBits uint8) (data uint64, err error) {
 	return
 }
 
+// ReadString reads numBits bits from the buffer and returns the value as a string.
 func (bitBuffer *BitBuffer) ReadString(numBits uint64) (data string, err error) {
 	dataBytes, err := bitBuffer.Read(numBits)
 
@@ -87,31 +101,3 @@ func (bitBuffer *BitBuffer) ReadString(numBits uint64) (data string, err error) 
 
 	return
 }
-
-/*
-func main() {
-	buffer := NewBitBuffer()
-
-	// 01100110 01101100 01100001 01100011 00100000 00110101 00110001 00110010
-	b := []byte("flac 512")
-
-	buffer.Feed(b)
-
-	// Read ints.
-	intData, err := buffer.Read(11)
-	fmt.Println(strconv.FormatUint(intData, 2))
-	intData, err = buffer.Read(7)
-	fmt.Println(strconv.FormatUint(intData, 2))
-
-	buffer = NewBitBuffer()
-
-	b = []byte("flac 512")
-
-	buffer.Feed(b)
-
-	stringData, err := buffer.ReadString(11)
-
-	fmt.Println(stringData, err)
-
-	fmt.Println(err)
-}*/
