@@ -3,6 +3,7 @@ package bitbuffer
 import (
 	"encoding/binary"
 	"bytes"
+	"fmt"
 	"io"
 )
 
@@ -10,12 +11,20 @@ import (
 type BitBuffer struct {
 	buffer []byte
 	pos    uint8
+	ByteOrder binary.ByteOrder
+}
+
+type TooManyBitsError uint8
+
+func (err TooManyBitsError) Error() string {
+	return fmt.Sprintf("bitbuffer: too many bits requested: %v", err)
 }
 
 // NewBitBuffer constructs a new BitBuffer.
-func NewBitBuffer() (bitBuffer *BitBuffer) {
+func NewBitBuffer(byteOrder binary.ByteOrder) (bitBuffer *BitBuffer) {
 	return &BitBuffer{
 		pos: 0,
+		ByteOrder: byteOrder,
 	}
 }
 
@@ -24,6 +33,12 @@ func (bitBuffer *BitBuffer) Feed(data []byte) {
 	bitBuffer.buffer = append(bitBuffer.buffer, data...)
 
 	return
+}
+
+// Clear buffer.
+func (bitBuffer *BitBuffer) Clear() {
+	bitBuffer.buffer = bitBuffer.buffer[: 0]
+	bitBuffer.pos = 0
 }
 
 // Read a number of bits from the buffer and return them as a byte array.
@@ -63,16 +78,27 @@ func (bitBuffer *BitBuffer) Read(numBits uint64) (data []byte, err error) {
 	return
 }
 
-// Read an unsigned integer from the buffer of numBits size and return the integer value.
+// ReadUint64 reads a uint64 from the buffer of numBits size and return the integer value.
 func (bitBuffer *BitBuffer) ReadUint64(numBits uint8) (data uint64, err error) {
+	if numBits > 64 {
+		err = TooManyBitsError(numBits)
+
+		return
+	}
+
 	dataBytes, err := bitBuffer.Read(uint64(numBits))
 
 	if err != nil {
 		return
 	}
 
-	dataBytes = append(make([]byte, 8 - len(dataBytes)), dataBytes...)
-	err = binary.Read(bytes.NewBuffer(dataBytes), binary.BigEndian, &data)
+	if bitBuffer.ByteOrder == binary.BigEndian {
+		dataBytes = append(make([]byte, 8 - len(dataBytes)), dataBytes...)
+	} else if bitBuffer.ByteOrder == binary.LittleEndian {
+		dataBytes = append(dataBytes, make([]byte, 8 - len(dataBytes))...)
+	}
+
+	err = binary.Read(bytes.NewBuffer(dataBytes), bitBuffer.ByteOrder, &data)
 
 	if err != nil {
 		return
@@ -85,6 +111,93 @@ func (bitBuffer *BitBuffer) ReadUint64(numBits uint8) (data uint64, err error) {
 	}
 
 	data >>= shifter
+
+	return
+}
+
+// ReadUint a uint from the buffer of numBits size and return the integer value.
+func (bitBuffer *BitBuffer) ReadUint(numBits uint8) (data uint, err error) {
+	wordSize := 32 << (^uint(0) >> 32 & 1)
+
+	if numBits > uint8(wordSize) {
+		err = TooManyBitsError(numBits)
+	}
+
+	rawData, err := bitBuffer.ReadUint64(numBits)
+
+	if err != nil {
+		return
+	}
+
+	data = uint(rawData)
+
+	return
+}
+
+// ReadUint8 reads a uint8 from the buffer of numBits size and return the integer value.
+func (bitBuffer *BitBuffer) ReadUint8(numBits uint8) (data uint8, err error) {
+	if numBits > 8 {
+		err = TooManyBitsError(numBits)
+	}
+
+	rawData, err := bitBuffer.ReadUint64(numBits)
+
+	if err != nil {
+		return
+	}
+
+	data = uint8(rawData)
+
+	return
+}
+
+// ReadUint16 reads a uint16 from the buffer of numBits size and return the integer value.
+func (bitBuffer *BitBuffer) ReadUint16(numBits uint8) (data uint16, err error) {
+	if numBits > 16 {
+		err = TooManyBitsError(numBits)
+	}
+
+	rawData, err := bitBuffer.ReadUint64(numBits)
+
+	if err != nil {
+		return
+	}
+
+	data = uint16(rawData)
+
+	return
+}
+
+// ReadUint32 reads a uint32 from the buffer of numBits size and return the integer value.
+func (bitBuffer *BitBuffer) ReadUint32(numBits uint8) (data uint32, err error) {
+	if numBits > 32 {
+		err = TooManyBitsError(numBits)
+	}
+
+	rawData, err := bitBuffer.ReadUint64(numBits)
+
+	if err != nil {
+		return
+	}
+
+	data = uint32(rawData)
+
+	return
+}
+
+// ReadByte reads a byte from the buffer of numBits size and return the integer value.
+func (bitBuffer *BitBuffer) ReadByte(numBits uint8) (data byte, err error) {
+	if numBits > 8 {
+		err = TooManyBitsError(numBits)
+	}
+
+	rawData, err := bitBuffer.ReadUint64(numBits)
+
+	if err != nil {
+		return
+	}
+
+	data = byte(rawData)
 
 	return
 }
