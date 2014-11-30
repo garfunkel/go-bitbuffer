@@ -1,19 +1,21 @@
+// Package bitbuffer is a simple and easy library used to read data on the bit-level from a buffer.
 package bitbuffer
 
 import (
-	"encoding/binary"
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 )
 
 // BitBuffer represents a buffer, which is filled with bytes where each bit can be read as a single unit.
 type BitBuffer struct {
-	buffer []byte
-	pos    uint8
+	buffer    []byte
+	pos       uint8
 	ByteOrder binary.ByteOrder
 }
 
+// TooManyBitsError occurs when attempting to read too many bits from a buffer.
 type TooManyBitsError uint8
 
 func (err TooManyBitsError) Error() string {
@@ -23,7 +25,7 @@ func (err TooManyBitsError) Error() string {
 // NewBitBuffer constructs a new BitBuffer.
 func NewBitBuffer(byteOrder binary.ByteOrder) (bitBuffer *BitBuffer) {
 	return &BitBuffer{
-		pos: 0,
+		pos:       0,
 		ByteOrder: byteOrder,
 	}
 }
@@ -37,41 +39,40 @@ func (bitBuffer *BitBuffer) Feed(data []byte) {
 
 // Clear buffer.
 func (bitBuffer *BitBuffer) Clear() {
-	bitBuffer.buffer = bitBuffer.buffer[: 0]
+	bitBuffer.buffer = []byte{}
 	bitBuffer.pos = 0
 }
 
 // Read a number of bits from the buffer and return them as a byte array.
 func (bitBuffer *BitBuffer) Read(numBits uint64) (data []byte, err error) {
-	if uint64(len(bitBuffer.buffer) * 8 - int(bitBuffer.pos)) < numBits {
+	if uint64(len(bitBuffer.buffer)*8-int(bitBuffer.pos)) < numBits {
 		err = io.EOF
 	}
 
 	for numBits > 0 && len(bitBuffer.buffer) > 0 {
 		data = append(data, bitBuffer.buffer[0])
-		data[len(data) - 1] <<= bitBuffer.pos
+		data[len(data)-1] <<= bitBuffer.pos
 
 		if len(bitBuffer.buffer) > 1 {
 			shifter := bitBuffer.buffer[1] >> (8 - bitBuffer.pos)
-			data[len(data) - 1] ^= shifter
+			data[len(data)-1] ^= shifter
 		}
 
 		if numBits < 8 {
-			data[len(data) - 1] >>= (8 - numBits)
-			data[len(data) - 1] <<= (8 - numBits)
+			data[len(data)-1] >>= (8 - numBits)
+			data[len(data)-1] <<= (8 - numBits)
 
-			if uint64(bitBuffer.pos) + numBits > 7 {
-				bitBuffer.buffer = bitBuffer.buffer[1 :]
+			if uint64(bitBuffer.pos)+numBits > 7 {
+				bitBuffer.buffer = bitBuffer.buffer[1:]
 			}
 
 			bitBuffer.pos = uint8((uint64(bitBuffer.pos) + numBits) % 8)
 			numBits = 0
 
 			return
-		} else {
-			bitBuffer.buffer = bitBuffer.buffer[1 :]
 		}
 
+		bitBuffer.buffer = bitBuffer.buffer[1:]
 		numBits -= 8
 	}
 
@@ -93,9 +94,9 @@ func (bitBuffer *BitBuffer) ReadUint64(numBits uint8) (data uint64, err error) {
 	}
 
 	if bitBuffer.ByteOrder == binary.BigEndian {
-		dataBytes = append(make([]byte, 8 - len(dataBytes)), dataBytes...)
+		dataBytes = append(make([]byte, 8-len(dataBytes)), dataBytes...)
 	} else if bitBuffer.ByteOrder == binary.LittleEndian {
-		dataBytes = append(dataBytes, make([]byte, 8 - len(dataBytes))...)
+		dataBytes = append(dataBytes, make([]byte, 8-len(dataBytes))...)
 	}
 
 	err = binary.Read(bytes.NewBuffer(dataBytes), bitBuffer.ByteOrder, &data)
@@ -106,7 +107,7 @@ func (bitBuffer *BitBuffer) ReadUint64(numBits uint8) (data uint64, err error) {
 
 	shifter := uint8(0)
 
-	if numBits % 8 > 0 {
+	if numBits%8 > 0 {
 		shifter = 8 - (numBits % 8)
 	}
 
@@ -130,6 +131,19 @@ func (bitBuffer *BitBuffer) ReadUint(numBits uint8) (data uint, err error) {
 	}
 
 	data = uint(rawData)
+
+	return
+}
+
+// ReadBit reads a single bit as a boolean and returns the value.
+func (bitBuffer *BitBuffer) ReadBit() (data bool, err error) {
+	rawData, err := bitBuffer.ReadUint8(1)
+
+	if err != nil {
+		return
+	}
+
+	data = rawData != 0
 
 	return
 }
